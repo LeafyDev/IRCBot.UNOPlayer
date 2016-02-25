@@ -211,5 +211,4 @@ GeneratedArtifacts/
 _Pvt_Extensions/
 ModelManifest.xml
 
-!Binary/ChatSharp.dll
-!Binary/IRCBot.UNOPlayer.exe
+!Binary/*
