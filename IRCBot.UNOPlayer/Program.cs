@@ -22,13 +22,8 @@ namespace IRCBot.UNOPlayer
 {
     internal static class Program
     {
-        private const string IRC_BotName = "UNO_Rekt";
-        private const string IRC_ChannelName = "#Seditio";
-        private const string IRC_Server = "irc.rizon.net";
         private static IrcClient client;
         private static bool MenuEnabled;
-        private static readonly string IRC_Password = string.Empty;
-        private static readonly string IRC_NSPassword = string.Empty;
         private static string topNumber = string.Empty;
         private static string topColor = string.Empty;
         private static bool drawingCard;
@@ -36,11 +31,17 @@ namespace IRCBot.UNOPlayer
 
         private static void Main()
         {
-            Console.Title = $"{IRC_BotName} on {IRC_Server} in channel {IRC_ChannelName}.";
+            if (!Config.Init())
+            {
+                Environment.Exit(1);
+            }
+
+            Console.Title = $"{Config.IRC_BotName} on {Config.IRC_Server} in channel {Config.IRC_ChannelName}.";
             ColoredWrite(ConsoleColor.Green, "*** Initialising " + Console.Title);
 
             SemiColoredWrite(ConsoleColor.Yellow, "[IRC] ", "Initialising IRC client.");
-            client = new IrcClient(IRC_Server, new IrcUser(IRC_BotName, IRC_BotName, IRC_Password));
+            client = new IrcClient(Config.IRC_Server,
+                new IrcUser(Config.IRC_BotName, Config.IRC_BotName, Config.IRC_Password), Config.IRC_SSL);
 
             client.ConnectAsync();
             SemiColoredWrite(ConsoleColor.Yellow, "[IRC] ", "Connected to IRC server.");
@@ -59,10 +60,10 @@ namespace IRCBot.UNOPlayer
         {
             client.ConnectionComplete += (s, e) =>
             {
-                if (!string.IsNullOrEmpty(IRC_NSPassword))
+                if (!string.IsNullOrEmpty(Config.IRC_NSPassword))
                 {
                     SemiColoredWrite(ConsoleColor.Yellow, "[IRC] ", "Identifying to NickServ.");
-                    client.SendMessage("identify " + IRC_NSPassword, "NickServ");
+                    client.SendMessage("identify " + Config.IRC_NSPassword, "NickServ");
                     Thread.Sleep(200);
                     SemiColoredWrite(ConsoleColor.Yellow, "[IRC] ", "Enabling vHost.");
                     client.SendMessage("hs on", "HostServ");
@@ -70,7 +71,7 @@ namespace IRCBot.UNOPlayer
                 }
 
                 SemiColoredWrite(ConsoleColor.Yellow, "[IRC] ", "Joining default channel.");
-                client.JoinChannel(IRC_ChannelName);
+                client.JoinChannel(Config.IRC_ChannelName);
                 SemiColoredWrite(ConsoleColor.Yellow, "[IRC] ", "Joined channel, enabling menu.");
                 Thread.Sleep(100);
 
@@ -112,7 +113,7 @@ namespace IRCBot.UNOPlayer
                 {
                     client.SendMessage(".uj", channel);
                 }
-                if (message.StartsWith($"\u000f\u0002{IRC_BotName}'s\u0002 turn. Top Card:"))
+                if (message.StartsWith($"\u000f\u0002{Config.IRC_BotName}'s\u0002 turn. Top Card:"))
                 {
                     var top = message.Split(new[] {"Top Card: \u0002\u0003\u0003"}, 0)[1].Split(new[] {"\u0003"}, 0)[0];
                     top = top.Remove(0, 2);
@@ -124,13 +125,13 @@ namespace IRCBot.UNOPlayer
                     topColor = color;
                     topNumber = card;
                 }
-                if (message.Contains("We have a winner!") && message.Contains(IRC_BotName))
+                if (message.Contains("We have a winner!") && message.Contains(Config.IRC_BotName))
                 {
                     SemiColoredWrite(ConsoleColor.Green, "[UNO] ", "Bot won the game.");
                     Thread.Sleep(1000);
                     client.SendMessage($"{IRC.BOLD}You just got rekted. ( ͡° ͜ʖ ͡°)", channel);
                 }
-                if (message.Contains("We have a winner!") && !message.Contains(IRC_BotName))
+                if (message.Contains("We have a winner!") && !message.Contains(Config.IRC_BotName))
                 {
                     SemiColoredWrite(ConsoleColor.Green, "[UNO] ", "Bot lost the game.");
                     Thread.Sleep(1000);
@@ -146,6 +147,13 @@ namespace IRCBot.UNOPlayer
 
             if (sender == "UNOBot")
             {
+                if (message.Contains("Drawn card:") && drawingCard)
+                {
+                    AddDrawnCard(message);
+                    Thread.Sleep(1000);
+                    return;
+                }
+
                 if (!message.Contains("Next:") && !message.Contains("Cards:"))
                 {
                     var splitter = message.Split('\u0003');
@@ -164,11 +172,6 @@ namespace IRCBot.UNOPlayer
                     }
 
                     PlayCard();
-                }
-                if (message.Contains("Drawn") && drawingCard)
-                {
-                    AddDrawnCard(message);
-                    Thread.Sleep(1000);
                 }
             }
         }
@@ -208,7 +211,7 @@ namespace IRCBot.UNOPlayer
                 }
                 else
                 {
-                    client.SendMessage($"{IRC.BOLD}{IRC.RED}ERROR FETCHING COLOR.", IRC_ChannelName);
+                    client.SendMessage($"{IRC.BOLD}{IRC.RED}ERROR FETCHING COLOR.", Config.IRC_ChannelName);
                 }
                 return;
             }
@@ -222,7 +225,7 @@ namespace IRCBot.UNOPlayer
                 }
                 else
                 {
-                    client.SendMessage($"{IRC.BOLD}{IRC.RED}ERROR FETCHING COLOR.", IRC_ChannelName);
+                    client.SendMessage($"{IRC.BOLD}{IRC.RED}ERROR FETCHING COLOR.", Config.IRC_ChannelName);
                 }
                 return;
             }
@@ -232,10 +235,10 @@ namespace IRCBot.UNOPlayer
 
             foreach (var str in splitter)
             {
-                if (!str.StartsWith(@"\") && !string.IsNullOrEmpty(s) && (s.Length <= 6 || s.Length >= 5))
+                if (!string.IsNullOrEmpty(str) && !str.Contains("Drawn") && !str.Equals("\u0002") && !played)
                 {
-                    var color = s.Split('[')[0];
-                    var card = s.Split('[')[1].Split(']')[0];
+                    var color = str.Split('[')[0];
+                    var card = str.Split('[')[1].Split(']')[0];
 
                     switch (color)
                     {
@@ -273,7 +276,7 @@ namespace IRCBot.UNOPlayer
 
             if (!played)
             {
-                client.SendMessage(".pa", IRC_ChannelName);
+                client.SendMessage(".pa", Config.IRC_ChannelName);
                 SemiColoredWrite(ConsoleColor.Green, "[UNO] ", "Passed turn.");
             }
         }
@@ -318,7 +321,7 @@ namespace IRCBot.UNOPlayer
             if (!canPlay && !drawingCard)
             {
                 drawingCard = true;
-                client.SendMessage(".d", IRC_ChannelName);
+                client.SendMessage(".d", Config.IRC_ChannelName);
                 SemiColoredWrite(ConsoleColor.Green, "[UNO] ", "Drew card");
             }
             else
@@ -332,7 +335,7 @@ namespace IRCBot.UNOPlayer
                     }
                     else
                     {
-                        client.SendMessage($"{IRC.BOLD}{IRC.RED}ERROR FETCHING COLOR.", IRC_ChannelName);
+                        client.SendMessage($"{IRC.BOLD}{IRC.RED}ERROR FETCHING COLOR.", Config.IRC_ChannelName);
                     }
                 }
             }
@@ -348,7 +351,7 @@ namespace IRCBot.UNOPlayer
             }
             else
             {
-                client.SendMessage($".p {color} {card}", IRC_ChannelName);
+                client.SendMessage($".p {color} {card}", Config.IRC_ChannelName);
                 SemiColoredWrite(ConsoleColor.Green, "[UNO] ", $"Played {color} {card}");
             }
         }
@@ -366,18 +369,7 @@ namespace IRCBot.UNOPlayer
         }
 
         private static bool isCardPlayable(string number, string color)
-        {
-            if (topNumber.Equals(number))
-            {
-                return true;
-            }
-            if (topColor.Equals(color))
-            {
-                return true;
-            }
-
-            return false;
-        }
+            => topNumber.Equals(number) || topColor.Equals(color);
 
         private static string BuildCTCPTime()
         {
@@ -439,18 +431,7 @@ namespace IRCBot.UNOPlayer
                         ColoredWrite(ConsoleColor.DarkGray, "--- say");
                         ColoredWrite(ConsoleColor.Cyan, "Enter message to send:");
                         var msg = Console.ReadLine();
-                        ColoredWrite(ConsoleColor.Cyan, "Enter channel to send to:");
-                        var channel = Console.ReadLine();
-
-                        try
-                        {
-                            client.Channels[channel].SendMessage(msg);
-                        }
-                        catch (Exception ex)
-                        {
-                            ColoredWrite(ConsoleColor.Red, $"{ex.GetType()}: {ex.Message}");
-                        }
-
+                        client.SendMessage(msg, Config.IRC_ChannelName);
                         ColoredWrite(ConsoleColor.DarkGray, "--- end_say");
                         continue;
                     case "join":
@@ -492,7 +473,7 @@ namespace IRCBot.UNOPlayer
             } while (command != "exit");
         }
 
-        private static void ColoredWrite(ConsoleColor color, string text)
+        public static void ColoredWrite(ConsoleColor color, string text)
         {
             var originalColor = Console.ForegroundColor;
             Console.ForegroundColor = color;
